@@ -5,4 +5,4 @@ requests
 PyPDF2
 reportlab
 pillow
-supabase-py
+supabase==0.4.0
