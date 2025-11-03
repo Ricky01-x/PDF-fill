@@ -1,15 +1,8 @@
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.5.3
-PyPDF2==3.0.1
-reportlab==4.0.9
-Pillow>=10.0.0
-requests==2.31.0
-python-multipart==0.0.6
-
-# Supabase 依賴 - 使用預編譯版本
-supabase==2.3.4
-postgrest==0.16.0
-storage3==0.7.4
-httpx==0.26.0
-python-dotenv==1.0.0
+fastapi
+uvicorn
+pydantic==1.10.12
+requests
+PyPDF2
+reportlab
+pillow
+supabase-py
