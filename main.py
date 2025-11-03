@@ -7,7 +7,6 @@ import requests
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from PIL import Image
-from supabase import create_client, Client
 import os
 from datetime import datetime
 import uvicorn
@@ -19,7 +18,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS 設定 - 允許 n8n 調用
+# CORS 設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -59,11 +58,38 @@ class FillPDFResponse(BaseModel):
     pdf_url: Optional[str] = None
     filename: Optional[str] = None
 
+# ==================== Supabase HTTP API 客戶端 ====================
+
+class SupabaseStorageClient:
+    def __init__(self, url: str, key: str):
+        self.url = url.rstrip('/')
+        self.key = key
+        
+    def upload(self, bucket: str, path: str, file_data: bytes) -> dict:
+        """上傳文件到 Supabase Storage"""
+        upload_url = f"{self.url}/storage/v1/object/{bucket}/{path}"
+        
+        headers = {
+            "Authorization": f"Bearer {self.key}",
+            "Content-Type": "application/pdf"
+        }
+        
+        response = requests.post(upload_url, data=file_data, headers=headers)
+        
+        if response.status_code not in [200, 201]:
+            raise Exception(f"Upload failed: {response.text}")
+        
+        return response.json()
+    
+    def get_public_url(self, bucket: str, path: str) -> str:
+        """獲取文件的公開 URL"""
+        return f"{self.url}/storage/v1/object/public/{bucket}/{path}"
+
 # ==================== PDF 處理類 ====================
 
 class PDFFieldFiller:
     def __init__(self, supabase_url: str, supabase_key: str):
-        self.supabase: Client = create_client(supabase_url, supabase_key)
+        self.storage = SupabaseStorageClient(supabase_url, supabase_key)
         
     def download_file(self, url: str) -> bytes:
         """下載遠端文件"""
@@ -72,11 +98,7 @@ class PDFFieldFiller:
         return response.content
     
     def convert_anvil_coordinates(self, anvil_y: float, page_height: float, field_height: float) -> float:
-        """
-        轉換 Anvil 座標到 PDF 座標
-        Anvil: 原點在左上角
-        PDF: 原點在左下角
-        """
+        """轉換 Anvil 座標到 PDF 座標"""
         pdf_y = page_height - anvil_y - field_height
         return pdf_y
     
@@ -205,13 +227,9 @@ class PDFFieldFiller:
         
         print(f"☁️  正在上傳到 Supabase bucket '{bucket}'...")
         
-        self.supabase.storage.from_(bucket).upload(
-            unique_filename,
-            pdf_data.read(),
-            {"content-type": "application/pdf"}
-        )
+        self.storage.upload(bucket, unique_filename, pdf_data.read())
+        public_url = self.storage.get_public_url(bucket, unique_filename)
         
-        public_url = self.supabase.storage.from_(bucket).get_public_url(unique_filename)
         return public_url
 
 # ==================== API 端點 ====================
@@ -222,7 +240,7 @@ async def root():
     return {
         "service": "PDF Field Filler API",
         "status": "running",
-        "version": "1.0.0"
+        "version": "1.0.1"
     }
 
 @app.get("/health")
@@ -236,16 +254,7 @@ async def health_check():
 
 @app.post("/fill-pdf", response_model=FillPDFResponse)
 async def fill_pdf(request: FillPDFRequest):
-    """
-    填寫 PDF 表單欄位
-    
-    - **pdf_url**: 原始 PDF 的公開 URL
-    - **fields**: 欄位資料列表
-    - **filename**: 原始文件名
-    - **bucket**: Supabase bucket 名稱（默認：finishpdf）
-    
-    返回填寫完成的 PDF 公開 URL
-    """
+    """填寫 PDF 表單欄位"""
     try:
         # 檢查 Supabase 配置
         if not SUPABASE_URL or not SUPABASE_KEY:
@@ -276,8 +285,5 @@ async def fill_pdf(request: FillPDFRequest):
         print(f"❌ 錯誤: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== 本地運行 ====================
-
 if __name__ == "__main__":
-    # 本地測試時使用
     uvicorn.run(app, host="0.0.0.0", port=8000)
