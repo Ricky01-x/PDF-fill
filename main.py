@@ -101,7 +101,7 @@ class PDFFieldFiller:
         """轉換 Anvil 座標到 PDF 座標"""
         pdf_y = page_height - anvil_y - field_height
         return pdf_y
-    
+
     def create_overlay(self, field_data: FieldData, page_width: float, page_height: float) -> io.BytesIO:
         """創建包含填寫內容的覆蓋層 PDF"""
         packet = io.BytesIO()
@@ -163,13 +163,27 @@ class PDFFieldFiller:
         else:
             # 處理文字欄位
             print(f"   📝 處理文字欄位: {answer}")
-            font_size = min(height * 0.6, 12)
-            font_size = max(font_size, 8)
             
-            can.setFont("Helvetica", font_size)
-            text_y = y + (height - font_size) / 2 + 2
-            can.drawString(x + 3, text_y, str(answer))
-            print(f"   ✅ 文字已填入")
+            # 🆕 固定字體大小
+            FIXED_FONT_SIZE = 10
+            font_name = "Helvetica"
+            
+            # 🆕 設定字體
+            can.setFont(font_name, FIXED_FONT_SIZE)
+            
+            # 🆕 計算文字寬度以實現置中對齊
+            text = str(answer)
+            text_width = can.stringWidth(text, font_name, FIXED_FONT_SIZE)
+            
+            # 🆕 水平置中
+            text_x = x + (width - text_width) / 2
+            
+            # 🆕 垂直置中（基於固定字體大小）
+            text_y = y + (height - FIXED_FONT_SIZE) / 2 + 2
+    
+            # 繪製文字
+            can.drawString(text_x, text_y, text)
+            print(f"   ✅ 文字已填入 (字體大小: {FIXED_FONT_SIZE}, 置中對齊)")
         
         can.save()
         packet.seek(0)
