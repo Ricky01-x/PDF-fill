@@ -94,28 +94,46 @@ class PDFFieldFiller:
     def __init__(self, supabase_url: str, supabase_key: str):
         self.storage = SupabaseStorageClient(supabase_url, supabase_key)
         
-        # 🆕 註冊中文字體（使用 TrueType 字體文件）
-        try:
-            # 方案 1: 使用專案中的字體文件
-            font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSansTC-Regular.ttf')
+        # 🆕 註冊中文字體
+        print("=" * 50)
+        print("🔍 開始載入中文字體...")
+        
+        # 嘗試多個可能的路徑
+        possible_paths = [
+            '/app/fonts/NotoSansTC-Regular.ttf',  # Docker 絕對路徑
+            'fonts/NotoSansTC-Regular.ttf',  # 相對路徑
+            os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSansTC-Regular.ttf'),
+        ]
+        
+        font_loaded = False
+        for font_path in possible_paths:
+            print(f"📂 嘗試路徑: {font_path}")
             if os.path.exists(font_path):
-                pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
-                self.chinese_font = 'ChineseFont'
-                print(f"✅ 成功載入中文字體: {font_path}")
+                try:
+                    file_size = os.path.getsize(font_path)
+                    print(f"   ✓ 文件存在，大小: {file_size / 1024 / 1024:.2f} MB")
+                    pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
+                    self.chinese_font = 'ChineseFont'
+                    print(f"✅ 成功載入中文字體: {font_path}")
+                    font_loaded = True
+                    break
+                except Exception as e:
+                    print(f"   ✗ 載入失敗: {str(e)}")
             else:
-                # 方案 2: 嘗試系統字體（備用方案）
-                raise FileNotFoundError("Font file not found")
-        except Exception as e:
-            # 方案 3: 使用 reportlab-fonts（需要額外安裝）
+                print(f"   ✗ 文件不存在")
+        
+        if not font_loaded:
+            print("⚠️  所有路徑都失敗，使用備用字體")
             try:
                 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
                 pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
                 self.chinese_font = 'STSong-Light'
                 print(f"⚠️  使用備用中文字體: STSong-Light (可能顯示效果較差)")
             except:
-                # 最終備用方案：使用 Helvetica（會顯示為方框）
                 self.chinese_font = 'Helvetica'
-                print(f"❌ 中文字體載入失敗，將使用 Helvetica (中文可能無法顯示): {str(e)}")
+                print(f"❌ 中文字體完全載入失敗")
+    
+    print("=" * 50)
     
     def has_chinese(self, text: str) -> bool:
         """🆕 檢測文字是否包含中文字符"""
