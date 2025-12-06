@@ -7,7 +7,7 @@ import requests
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.pdfbase.ttfonts import TTFont
 from PIL import Image
 import os
 from datetime import datetime
@@ -94,15 +94,28 @@ class PDFFieldFiller:
     def __init__(self, supabase_url: str, supabase_key: str):
         self.storage = SupabaseStorageClient(supabase_url, supabase_key)
         
-        # 🆕 註冊中文字體
+        # 🆕 註冊中文字體（使用 TrueType 字體文件）
         try:
-            # 註冊繁體中文字體
-            pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
-            # 也可以註冊簡體中文字體
-            pdfmetrics.registerFont(UnicodeCIDFont('STSongStd-Light'))
-            print("✅ 中文字體註冊成功")
+            # 方案 1: 使用專案中的字體文件
+            font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSansTC-Regular.ttf')
+            if os.path.exists(font_path):
+                pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
+                self.chinese_font = 'ChineseFont'
+                print(f"✅ 成功載入中文字體: {font_path}")
+            else:
+                # 方案 2: 嘗試系統字體（備用方案）
+                raise FileNotFoundError("Font file not found")
         except Exception as e:
-            print(f"⚠️  中文字體註冊警告: {str(e)}")
+            # 方案 3: 使用 reportlab-fonts（需要額外安裝）
+            try:
+                from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+                pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+                self.chinese_font = 'STSong-Light'
+                print(f"⚠️  使用備用中文字體: STSong-Light (可能顯示效果較差)")
+            except:
+                # 最終備用方案：使用 Helvetica（會顯示為方框）
+                self.chinese_font = 'Helvetica'
+                print(f"❌ 中文字體載入失敗，將使用 Helvetica (中文可能無法顯示): {str(e)}")
     
     def has_chinese(self, text: str) -> bool:
         """🆕 檢測文字是否包含中文字符"""
@@ -186,7 +199,7 @@ class PDFFieldFiller:
             
             # 🆕 智能選擇字體（支援中文）
             if self.has_chinese(text):
-                font_name = "STSong-Light"  # 中文字體
+                font_name = self.chinese_font  # 使用註冊的中文字體
                 print(f"   🀄 檢測到中文，使用 {font_name}")
             else:
                 font_name = "Helvetica"  # 英文字體（保持原有效果）
