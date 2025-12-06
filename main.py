@@ -6,16 +6,19 @@ import io
 import requests
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from PIL import Image
 import os
 from datetime import datetime
 import uvicorn
+import re
 
 # 初始化 FastAPI
 app = FastAPI(
     title="PDF Field Filler API",
-    description="填寫 PDF 表單欄位並上傳到 Supabase",
-    version="1.0.0"
+    description="填寫 PDF 表單欄位並上傳到 Supabase（支援中文）",
+    version="1.1.0"
 )
 
 # CORS 設定
@@ -91,6 +94,20 @@ class PDFFieldFiller:
     def __init__(self, supabase_url: str, supabase_key: str):
         self.storage = SupabaseStorageClient(supabase_url, supabase_key)
         
+        # 🆕 註冊中文字體
+        try:
+            # 註冊繁體中文字體
+            pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+            # 也可以註冊簡體中文字體
+            pdfmetrics.registerFont(UnicodeCIDFont('STSongStd-Light'))
+            print("✅ 中文字體註冊成功")
+        except Exception as e:
+            print(f"⚠️  中文字體註冊警告: {str(e)}")
+    
+    def has_chinese(self, text: str) -> bool:
+        """🆕 檢測文字是否包含中文字符"""
+        return bool(re.search(r'[\u4e00-\u9fff]', text))
+    
     def download_file(self, url: str) -> bytes:
         """下載遠端文件"""
         response = requests.get(url)
@@ -164,26 +181,31 @@ class PDFFieldFiller:
             # 處理文字欄位
             print(f"   📝 處理文字欄位: {answer}")
             
-            # 🆕 固定字體大小
             FIXED_FONT_SIZE = 10
-            font_name = "Helvetica"
+            text = str(answer)
             
-            # 🆕 設定字體
+            # 🆕 智能選擇字體（支援中文）
+            if self.has_chinese(text):
+                font_name = "STSong-Light"  # 中文字體
+                print(f"   🀄 檢測到中文，使用 {font_name}")
+            else:
+                font_name = "Helvetica"  # 英文字體（保持原有效果）
+            
+            # 設定字體
             can.setFont(font_name, FIXED_FONT_SIZE)
             
-            # 🆕 計算文字寬度以實現置中對齊
-            text = str(answer)
+            # 計算文字寬度以實現置中對齊
             text_width = can.stringWidth(text, font_name, FIXED_FONT_SIZE)
             
-            # 🆕 水平置中
+            # 水平置中
             text_x = x + (width - text_width) / 2
             
-            # 🆕 垂直置中（基於固定字體大小）
+            # 垂直置中（基於固定字體大小）
             text_y = y + (height - FIXED_FONT_SIZE) / 2 + 2
     
             # 繪製文字
             can.drawString(text_x, text_y, text)
-            print(f"   ✅ 文字已填入 (字體大小: {FIXED_FONT_SIZE}, 置中對齊)")
+            print(f"   ✅ 文字已填入 (字體: {font_name}, 大小: {FIXED_FONT_SIZE}, 置中對齊)")
         
         can.save()
         packet.seek(0)
@@ -254,7 +276,8 @@ async def root():
     return {
         "service": "PDF Field Filler API",
         "status": "running",
-        "version": "1.0.1"
+        "version": "1.1.0",
+        "features": ["Chinese Support", "Auto Font Detection"]
     }
 
 @app.get("/health")
@@ -263,6 +286,7 @@ async def health_check():
     return {
         "status": "healthy",
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
+        "chinese_support": True,
         "timestamp": datetime.now().isoformat()
     }
 
